@@ -6,6 +6,7 @@ import os
 
 # Настройки
 HISTORY_FILE = "tasks.json"
+GENERATED_HISTORY_FILE = "generated_tasks.json"  # Отдельный файл для истории сгенерированных задач
 DEFAULT_TASKS = [
     {"text": "Прочитать статью", "type": "учёба"},
     {"text": "Сделать зарядку", "type": "спорт"},
@@ -19,10 +20,11 @@ class TaskGeneratorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Генератор случайных задач")
-        self.root.geometry("500x500")
+        self.root.geometry("500x550")
 
         # Загрузка данных
         self.tasks = self.load_tasks()
+        self.generated_history = self.load_generated_history()
 
         # Текущая задача
         self.current_task_label = tk.Label(
@@ -55,9 +57,9 @@ class TaskGeneratorApp:
         # История задач
         history_frame = tk.Frame(root)
         history_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        tk.Label(history_frame, text="История задач:",
+        tk.Label(history_frame, text="История сгенерированных задач:",
                  font=("Arial", 10, "bold")).pack()
-        self.history_listbox = tk.Listbox(history_frame, height=12)
+        self.history_listbox = tk.Listbox(history_frame, height=10)
         scrollbar = tk.Scrollbar(history_frame)
         self.history_listbox.config(yscrollcommand=scrollbar.set)
         scrollbar.config(command=self.history_listbox.yview)
@@ -79,33 +81,59 @@ class TaskGeneratorApp:
         tk.Button(add_frame, text="Добавить в список",
                  command=self.add_new_task).pack(side=tk.LEFT)
 
+
         self.update_history_list()
 
     def load_tasks(self):
         """Загрузка задач из JSON или создание файла с дефолтными задачами."""
         if os.path.exists(HISTORY_FILE):
-            with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
-                try:
+            try:
+                with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
                     return json.load(f)
-                except json.JSONDecodeError:
-                    return DEFAULT_TASKS.copy()
+            except (json.JSONDecodeError, IOError) as e:
+                messagebox.showerror("Ошибка", f"Не удалось загрузить задачи: {e}")
+                return DEFAULT_TASKS.copy()
         # Если файла нет, создаём его с дефолтными задачами
-        with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
-            json.dump(DEFAULT_TASKS.copy(), f, ensure_ascii=False, indent=2)
+        try:
+            with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+                json.dump(DEFAULT_TASKS.copy(), f, ensure_ascii=False, indent=2)
+        except IOError as e:
+            messagebox.showerror("Ошибка", f"Не удалось создать файл задач: {e}")
         return DEFAULT_TASKS.copy()
 
+    def load_generated_history(self):
+        """Загрузка истории сгенерированных задач."""
+        if os.path.exists(GENERATED_HISTORY_FILE):
+            try:
+                with open(GENERATED_HISTORY_FILE, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError):
+                return []
+        return []
+
     def save_tasks(self):
-        """Сохранение списка задач в JSON."""
-        with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
-            json.dump(self.tasks, f, ensure_ascii=False, indent=2)
+        """Сохранение списка задач в JSON с обработкой ошибок."""
+        try:
+            with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self.tasks, f, ensure_ascii=False, indent=2)
+        except IOError as e:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить задачи: {e}")
+
+    def save_generated_history(self):
+        """Сохранение истории сгенерированных задач с обработкой ошибок."""
+        try:
+            with open(GENERATED_HISTORY_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self.generated_history, f, ensure_ascii=False, indent=2)
+        except IOError as e:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить историю: {e}")
 
     def update_history_list(self, *args):
         """Обновление виджета списка истории с учётом фильтра."""
         self.history_listbox.delete(0, tk.END)
         filter_type = self.filter_var.get()
-        for task in reversed(self.tasks):  # Показываем новые задачи сверху
+        for task in reversed(self.generated_history):  # Показываем новые задачи сверху
             if filter_type == "все" or task["type"] == filter_type:
-                self.history_listbox.insert(tk.END, f"{task['text']} ({task['type']})")
+                self.history_listbox.insert(tk.END, f"{task['text']} ({task['type']}) — {task['timestamp']}")
 
     def generate_task(self):
         """Генерация случайной задачи."""
@@ -113,11 +141,18 @@ class TaskGeneratorApp:
             messagebox.showwarning("Предупреждение", "Список задач пуст! Добавьте новые задачи.")
             return
         selected_task = random.choice(self.tasks)
+        # Добавляем в историю сгенерированных задач с отметкой времени
+        from datetime import datetime
+        generated_task = selected_task.copy()
+        generated_task["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.generated_history.append(generated_task)
+        self.save_generated_history()
         # Отображаем задачу в главном лейбле
         self.current_task_label.config(
             text=f"Задача: {selected_task['text']}\nТип: {selected_task['type'].capitalize()}",
             bg="#f0f0f0", relief="solid"
         )
+        self.update_history_list()
 
     def add_new_task(self):
         """Добавление новой задачи с валидацией."""
@@ -129,14 +164,3 @@ class TaskGeneratorApp:
             return
 
         new_task = {"text": task_text, "type": task_type}
-        self.tasks.append(new_task)
-        self.save_tasks()
-        self.update_history_list()
-        # Очищаем поля ввода
-        self.new_task_entry.delete(0, tk.END)
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = TaskGeneratorApp(root)
-    app.update_history_list()  # Первоначальная загрузка истории
-    root.mainloop()
