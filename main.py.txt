@@ -1,0 +1,139 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+import random
+import json
+import os
+
+# Настройки
+HISTORY_FILE = "tasks.json"
+DEFAULT_TASKS = [
+    {"text": "Прочитать статью", "type": "учёба"},
+    {"text": "Сделать зарядку", "type": "спорт"},
+    {"text": "Написать отчёт", "type": "работа"},
+    {"text": "Посмотреть обучающее видео", "type": "учёба"},
+    {"text": "Разобрать почту", "type": "работа"},
+    {"text": "Погулять на свежем воздухе", "type": "отдых"},
+]
+
+class TaskGeneratorApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Random Task Generator")
+        self.root.geometry("500x500")
+
+        # Загрузка данных
+        self.tasks = self.load_tasks()
+
+        # Верхняя часть: генерация задачи
+        top_frame = tk.Frame(root)
+        top_frame.pack(pady=10, fill=tk.X)
+
+        self.current_task_label = tk.Label(top_frame, text="Нажмите «Сгенерировать задачу»", font=("Arial", 12))
+        self.current_task_label.pack()
+
+        generate_btn = tk.Button(top_frame, text="Сгенерировать задачу", command=self.generate_task)
+        generate_btn.pack(pady=5)
+
+        # Средняя часть: добавление новых задач
+        add_frame = tk.Frame(root)
+        add_frame.pack(pady=5, fill=tk.X)
+
+        tk.Label(add_frame, text="Новая задача:").pack(side=tk.LEFT)
+        self.new_task_entry = tk.Entry(add_frame, width=30)
+        self.new_task_entry.pack(side=tk.LEFT, padx=5)
+
+        tk.Label(add_frame, text="Тип:").pack(side=tk.LEFT)
+        self.task_type = ttk.Combobox(add_frame, values=["учёба", "спорт", "работа", "отдых"], state="readonly")
+        self.task_type.set("учёба")
+        self.task_type.pack(side=tk.LEFT, padx=5)
+
+        add_btn = tk.Button(add_frame, text="Добавить задачу", command=self.add_task)
+        add_btn.pack(side=tk.LEFT, padx=5)
+
+        # Нижняя часть: история и фильтрация
+        bottom_frame = tk.Frame(root)
+        bottom_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # Фильтр
+        filter_frame = tk.Frame(bottom_frame)
+        filter_frame.pack(fill=tk.X)
+
+        tk.Label(filter_frame, text="Фильтр по типу:").pack(side=tk.LEFT)
+        self.filter_var = tk.StringVar(value="все")
+        filter_combo = ttk.Combobox(filter_frame, textvariable=self.filter_var,
+                                   values=["все", "учёба", "спорт", "работа", "отдых"],
+                                   state="readonly")
+        filter_combo.pack(side=tk.LEFT, padx=5)
+        filter_combo.bind("<<ComboboxSelected>>", self.update_history_list)
+
+        # Список истории
+        history_frame = tk.Frame(bottom_frame)
+        history_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        self.history_listbox = tk.Listbox(history_frame, height=10)
+        self.history_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        scrollbar = tk.Scrollbar(history_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.history_listbox.config(yscrollcommand=scrollbar.set)
+        scrollbar.config(command=self.history_listbox.yview)
+
+        # Обновление списка истории
+        self.update_history_list()
+
+    def load_tasks(self):
+        """Загрузка задач из JSON или создание дефолтных."""
+        if os.path.exists(HISTORY_FILE):
+            with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        else:
+            # Создаём файл с дефолтными задачами
+            with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+                json.dump(DEFAULT_TASKS.copy(), f, ensure_ascii=False, indent=2)
+            return DEFAULT_TASKS.copy()
+
+    def save_tasks(self):
+        """Сохранение списка задач в JSON."""
+        with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(self.tasks, f, ensure_ascii=False, indent=2)
+
+    def update_history_list(self, *args):
+        """Обновление списка истории с учётом фильтра."""
+        self.history_listbox.delete(0, tk.END)
+        filter_type = self.filter_var.get()
+
+        for task in self.tasks:
+            if filter_type == "все" or task["type"] == filter_type:
+                self.history_listbox.insert(tk.END, f"{task['text']} ({task['type']})")
+
+    def generate_task(self):
+        """Генерация случайной задачи."""
+        if not self.tasks:
+            messagebox.showwarning("Предупреждение", "Список задач пуст!")
+            return
+
+        task = random.choice(self.tasks)
+        self.current_task_label.config(text=f"Задача: {task['text']}\nТип: {task['type']}")
+
+    def add_task(self):
+        """Добавление новой задачи с валидацией."""
+        text = self.new_task_entry.get().strip()
+        task_type = self.task_type.get()
+
+        if not text:
+            messagebox.showerror("Ошибка", "Задача не может быть пустой!")
+            return
+
+        new_task = {"text": text, "type": task_type}
+        self.tasks.append(new_task)
+        self.save_tasks()
+        self.update_history_list()
+        # Очищаем поля ввода
+        self.new_task_entry.delete(0, tk.END)
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = TaskGeneratorApp(root)
+    app.update_history_list()  # Первоначальная загрузка истории
+    root.mainloop()
